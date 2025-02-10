@@ -22,7 +22,8 @@ if not api_key:
     st.warning("Enter your OpenAI API key to continue.")
     st.stop()
 
-openai.api_key = api_key
+# Initialize OpenAI client
+client = openai.OpenAI(api_key=api_key)
 
 # Image Settings
 size_options = {
@@ -48,14 +49,15 @@ if st.button("🎨 Generate Image"):
     if prompt:
         try:
             # Call OpenAI API to generate image
-            response = openai.Image.create(
+            response = client.images.generate(
+                model="dall-e-3",
                 prompt=prompt,
                 n=1,
                 size=size_options[size],
-                quality=quality.lower()  # Standard or HD
+                quality=quality.lower()  # "standard" or "hd"
             )
-            image_url = response["data"][0]["url"]
-            revised_prompt = response["data"][0].get("revised_prompt", prompt)
+            image_url = response.data[0].url
+            revised_prompt = response.data[0].revised_prompt if hasattr(response.data[0], "revised_prompt") else prompt
 
             # Download and display the image
             image_response = requests.get(image_url)
