@@ -35,54 +35,82 @@ quality_options = ["Standard", "HD"]
 
 size = st.sidebar.selectbox("Select Image Size", list(size_options.keys()))
 quality = st.sidebar.radio("Select Quality", quality_options, horizontal=True)
+num_images = st.sidebar.slider("Number of Images", 1, 4, 1)  # Choose from 1 to 4 images
 
 # Function to generate a unique filename
-def generate_filename():
+def generate_filename(index):
     current_time = datetime.now().strftime('%Y%m%d-%H%M%S')
     random_suffix = ''.join(random.choices(string.ascii_letters, k=3))
-    return f"{current_time}-{random_suffix}.jpg"
+    return f"{current_time}-{index}-{random_suffix}.jpg"
 
 # Main Input
 prompt = st.text_area("Enter a prompt for DALL·E 3:")
 
-if st.button("🎨 Generate Image"):
+# State variables to store images and filenames
+if "generated_images" not in st.session_state:
+    st.session_state.generated_images = []
+    st.session_state.image_filenames = []
+    st.session_state.revised_prompt = None
+
+if st.button("🎨 Generate Image(s)"):
     if prompt:
         try:
-            # Call OpenAI API to generate image
+            # Call OpenAI API to generate images
             response = client.images.generate(
                 model="dall-e-3",
                 prompt=prompt,
-                n=1,
+                n=num_images,
                 size=size_options[size],
                 quality=quality.lower()  # "standard" or "hd"
             )
-            image_url = response.data[0].url
-            revised_prompt = response.data[0].revised_prompt if hasattr(response.data[0], "revised_prompt") else prompt
 
-            # Download and display the image
-            image_response = requests.get(image_url)
-            image = Image.open(BytesIO(image_response.content))
-            st.image(image, caption="🖼️ Generated Image", use_column_width=True)
+            # Clear previous images
+            st.session_state.generated_images = []
+            st.session_state.image_filenames = []
 
-            # Display revised prompt if it was modified
-            if revised_prompt != prompt:
-                st.info(f"**Revised Prompt:** {revised_prompt}")
+            # Process each generated image
+            for i, data in enumerate(response.data):
+                image_url = data.url
+                revised_prompt = data.revised_prompt if hasattr(data, "revised_prompt") else prompt
 
-            # Save the image as a downloadable file
-            filename = generate_filename()
-            img_path = Path(filename)
-            image.save(img_path)
+                # Download the image
+                image_response = requests.get(image_url)
+                image = Image.open(BytesIO(image_response.content))
 
-            with open(img_path, "rb") as file:
+                # Store in session state
+                st.session_state.generated_images.append(image)
+                st.session_state.image_filenames.append(generate_filename(i))
+
+            # Store revised prompt
+            st.session_state.revised_prompt = revised_prompt
+
+        except Exception as e:
+            st.error(f"🚨 Error: {e}")
+
+# Display generated images (if available)
+if st.session_state.generated_images:
+    # Display revised prompt if modified
+    if st.session_state.revised_prompt and st.session_state.revised_prompt != prompt:
+        st.info(f"**Revised Prompt:** {st.session_state.revised_prompt}")
+
+    # Layout for multiple images
+    cols = st.columns(len(st.session_state.generated_images))  # Create dynamic columns
+
+    for i, (image, filename) in enumerate(zip(st.session_state.generated_images, st.session_state.image_filenames)):
+        with cols[i]:  # Place each image in its respective column
+            st.image(image, caption=f"🖼️ Image {i+1}", use_container_width=True)
+
+            # Save image for download
+            with open(filename, "wb") as img_file:
+                image.save(img_file)
+
+            # Download button for each image
+            with open(filename, "rb") as file:
                 st.download_button(
-                    label="⬇️ Download Image",
+                    label=f"⬇️ Download Image {i+1}",
                     data=file,
                     file_name=filename,
                     mime="image/jpeg"
                 )
-        except Exception as e:
-            st.error(f"🚨 Error: {e}")
-    else:
-        st.warning("⚠️ Please enter a prompt.")
 
 st.write("🔗 Powered by OpenAI DALL·E 3")
