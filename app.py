@@ -7,6 +7,7 @@ from io import BytesIO
 from PIL import Image
 import random
 import string
+import time
 
 # Streamlit UI Setup
 st.set_page_config(page_title="DALL·E 3 Image Generator", layout="wide")
@@ -35,7 +36,7 @@ quality_options = ["Standard", "HD"]
 
 size = st.sidebar.selectbox("Select Image Size", list(size_options.keys()))
 quality = st.sidebar.radio("Select Quality", quality_options, horizontal=True)
-num_images = st.sidebar.slider("Number of Images", 1, 4, 1)  # Choose from 1 to 4 images
+num_images = st.sidebar.slider("Number of Images", 1, 4, 1)  # Generate 1 to 4 images
 
 # Function to generate a unique filename
 def generate_filename(index):
@@ -55,31 +56,33 @@ if "generated_images" not in st.session_state:
 if st.button("🎨 Generate Image(s)"):
     if prompt:
         try:
-            # Call OpenAI API to generate images
-            response = client.images.generate(
-                model="dall-e-3",
-                prompt=prompt,
-                n=num_images,
-                size=size_options[size],
-                quality=quality.lower()  # "standard" or "hd"
-            )
-
             # Clear previous images
             st.session_state.generated_images = []
             st.session_state.image_filenames = []
 
-            # Process each generated image
-            for i, data in enumerate(response.data):
-                image_url = data.url
-                revised_prompt = data.revised_prompt if hasattr(data, "revised_prompt") else prompt
+            # Generate images separately (DALL·E 3 requires n=1 per request)
+            for i in range(num_images):
+                with st.spinner(f"Generating Image {i+1}/{num_images}..."):
+                    response = client.images.generate(
+                        model="dall-e-3",
+                        prompt=prompt,
+                        n=1,  # DALL·E 3 only allows n=1 per request
+                        size=size_options[size],
+                        quality=quality.lower()  # "standard" or "hd"
+                    )
+                    image_url = response.data[0].url
+                    revised_prompt = response.data[0].revised_prompt if hasattr(response.data[0], "revised_prompt") else prompt
 
-                # Download the image
-                image_response = requests.get(image_url)
-                image = Image.open(BytesIO(image_response.content))
+                    # Download the image
+                    image_response = requests.get(image_url)
+                    image = Image.open(BytesIO(image_response.content))
 
-                # Store in session state
-                st.session_state.generated_images.append(image)
-                st.session_state.image_filenames.append(generate_filename(i))
+                    # Store in session state
+                    st.session_state.generated_images.append(image)
+                    st.session_state.image_filenames.append(generate_filename(i))
+
+                    # Avoid hitting rate limits
+                    time.sleep(1)
 
             # Store revised prompt
             st.session_state.revised_prompt = revised_prompt
