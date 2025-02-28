@@ -38,6 +38,10 @@ size = st.sidebar.selectbox("Select Image Size", list(size_options.keys()))
 quality = st.sidebar.radio("Select Quality", quality_options, horizontal=True)
 num_images = st.sidebar.slider("Number of Images", 1, 4, 1)  # Generate 1 to 4 images
 
+# Image Inspiration Upload
+st.sidebar.subheader("🖼️ Optional: Upload an Inspiration Image")
+uploaded_image = st.sidebar.file_uploader("Upload an image (JPG, PNG)", type=["jpg", "jpeg", "png"])
+
 # Function to generate a unique filename
 def generate_filename(index):
     current_time = datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -60,6 +64,14 @@ if st.button("🎨 Generate Image(s)"):
             st.session_state.generated_images = []
             st.session_state.image_filenames = []
 
+            # Convert uploaded image to bytes if provided
+            image_bytes = None
+            if uploaded_image:
+                image = Image.open(uploaded_image)
+                img_buffer = BytesIO()
+                image.save(img_buffer, format="PNG")  # Convert to PNG format
+                image_bytes = img_buffer.getvalue()
+
             # Generate images separately (DALL·E 3 requires n=1 per request)
             for i in range(num_images):
                 with st.spinner(f"Generating Image {i+1}/{num_images}..."):
@@ -68,17 +80,18 @@ if st.button("🎨 Generate Image(s)"):
                         prompt=prompt,
                         n=1,  # DALL·E 3 only allows n=1 per request
                         size=size_options[size],
-                        quality=quality.lower()  # "standard" or "hd"
+                        quality=quality.lower(),  # "standard" or "hd"
+                        image=image_bytes  # Include uploaded image if available
                     )
                     image_url = response.data[0].url
                     revised_prompt = response.data[0].revised_prompt if hasattr(response.data[0], "revised_prompt") else prompt
 
                     # Download the image
                     image_response = requests.get(image_url)
-                    image = Image.open(BytesIO(image_response.content))
+                    generated_image = Image.open(BytesIO(image_response.content))
 
                     # Store in session state
-                    st.session_state.generated_images.append(image)
+                    st.session_state.generated_images.append(generated_image)
                     st.session_state.image_filenames.append(generate_filename(i))
 
                     # Avoid hitting rate limits
@@ -99,13 +112,13 @@ if st.session_state.generated_images:
     # Layout for multiple images
     cols = st.columns(len(st.session_state.generated_images))  # Create dynamic columns
 
-    for i, (image, filename) in enumerate(zip(st.session_state.generated_images, st.session_state.image_filenames)):
+    for i, (generated_image, filename) in enumerate(zip(st.session_state.generated_images, st.session_state.image_filenames)):
         with cols[i]:  # Place each image in its respective column
-            st.image(image, caption=f"🖼️ Image {i+1}", use_container_width=True)
+            st.image(generated_image, caption=f"🖼️ Image {i+1}", use_container_width=True)
 
             # Save image for download
             with open(filename, "wb") as img_file:
-                image.save(img_file)
+                generated_image.save(img_file)
 
             # Download button for each image
             with open(filename, "rb") as file:
